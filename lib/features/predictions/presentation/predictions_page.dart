@@ -327,6 +327,11 @@ class _LoadingCard extends StatelessWidget {
           Text('Consultando la red neuronal…', style: context.tt.bodyLarge),
           const SizedBox(height: 4),
           Text(ApiConfig.mlApiBaseUrl, style: TextStyle(color: context.muted)),
+          if (!ApiConfig.mlApiEsLocal) ...[
+            const SizedBox(height: 8),
+            Text('Si la API estaba dormida, la primera vez puede tardar hasta 30 segundos.',
+                textAlign: TextAlign.center, style: context.tt.bodySmall?.copyWith(color: context.muted)),
+          ],
         ]),
       );
 }
@@ -339,19 +344,29 @@ class _ErrorCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final offline = error is PredictionApiException && (error as PredictionApiException).apiOffline;
+    final local = ApiConfig.mlApiEsLocal;
     return AppCard(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Icon(offline ? Icons.cloud_off_outlined : Icons.error_outline, color: AppColors.danger),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(offline ? 'La API de predicción está apagada' : 'No se pudo obtener la predicción',
+            child: Text(
+                offline
+                    ? (local ? 'La API de predicción está apagada' : 'No se pudo conectar con la API de predicción')
+                    : 'No se pudo obtener la predicción',
                 style: context.tt.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
           ),
         ]),
         const SizedBox(height: 10),
         Text('$error'),
-        if (offline) ...[
+        if (offline && !local) ...[
+          const SizedBox(height: 14),
+          Text('La API está en la nube (Railway). Si estaba dormida puede tardar unos segundos en despertar: '
+              'presiona Reintentar. Si sigue fallando, revisa que el servicio esté activo en Railway.',
+              style: TextStyle(color: context.muted)),
+        ],
+        if (offline && local) ...[
           const SizedBox(height: 14),
           Text('Enciéndela en otra terminal:', style: TextStyle(color: context.muted)),
           const SizedBox(height: 6),

@@ -40,25 +40,38 @@ class PredictionApiClient {
     return [for (final r in (json['resultados'] as List? ?? const [])) (r as Map).cast<String, dynamic>()];
   }
 
+  /// Intentos cuando la API de Railway está despertando (Serverless).
+  static const _intentos = 5;
+
   Future<http.Response> _send(Future<http.Response> Function() call) async {
-    try {
-      final res = await call();
-      if (res.statusCode == 503) {
-        throw PredictionApiException(_detail(res) ?? 'La API está encendida pero no tiene un modelo entrenado. Ejecuta: python -m scripts.entrenar');
+    for (var intento = 1;; intento++) {
+      try {
+        final res = await call();
+        // 502/504: Railway todavía está despertando la API. Se espera 3, 6, 9 y 12 s y se reintenta.
+        if ((res.statusCode == 502 || res.statusCode == 504) && intento < _intentos) {
+          await Future<void>.delayed(Duration(seconds: 3 * intento));
+          continue;
+        }
+        if (res.statusCode == 503) {
+          throw PredictionApiException(_detail(res) ?? 'La API está encendida pero no tiene un modelo entrenado. Ejecuta: python -m scripts.entrenar');
+        }
+        if (res.statusCode >= 400) {
+          throw PredictionApiException('La API respondió ${res.statusCode}: ${_detail(res) ?? res.reasonPhrase ?? ''}');
+        }
+        return res;
+      } on PredictionApiException {
+        rethrow;
+      } on TimeoutException {
+        throw PredictionApiException('La API de predicción no respondió a tiempo ($baseUrl).', apiOffline: true);
+      } catch (e) {
+        // http.ClientException, SocketException (móvil/escritorio) y errores de red del navegador.
+        // En la web, un 502 de Railway sin CORS también llega aquí: se reintenta igual.
+        if (intento < _intentos) {
+          await Future<void>.delayed(Duration(seconds: 3 * intento));
+          continue;
+        }
+        throw PredictionApiException('No se pudo conectar con la API de predicción en $baseUrl.', apiOffline: true);
       }
-      if (res.statusCode >= 400) {
-        throw PredictionApiException('La API respondió ${res.statusCode}: ${_detail(res) ?? res.reasonPhrase ?? ''}');
-      }
-      return res;
-    } on PredictionApiException {
-      rethrow;
-    } on TimeoutException {
-      throw PredictionApiException('La API de predicción no respondió a tiempo ($baseUrl).', apiOffline: true);
-    } on http.ClientException {
-      throw PredictionApiException('No se pudo conectar con la API de predicción en $baseUrl.', apiOffline: true);
-    } catch (e) {
-      // SocketException (móvil/escritorio) y errores de red del navegador caen aquí.
-      throw PredictionApiException('No se pudo conectar con la API de predicción en $baseUrl.', apiOffline: true);
     }
   }
 

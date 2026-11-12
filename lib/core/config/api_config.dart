@@ -1,23 +1,28 @@
-import 'package:flutter/foundation.dart';
-
 /// Dirección de la API de predicción (FastAPI + TensorFlow, carpeta `prediccion-ml/` del repo GymAssist2.0).
 ///
-/// Se puede cambiar sin tocar código:
-///   flutter run -d chrome --dart-define=ML_API_URL=http://localhost:8000
-///   flutter run -d <android> --dart-define=ML_API_URL=http://192.168.1.50:8000   (celular real, misma Wi-Fi)
+/// Por defecto se usa la API desplegada en Railway (se duerme cuando no se usa y despierta sola).
 ///
-/// Si no se indica, se usa:
-///   - Emulador de Android: http://10.0.2.2:8000 (10.0.2.2 es el "localhost" del PC visto desde el emulador)
-///   - Chrome, Windows, macOS, iOS simulador: http://localhost:8000
+/// Para usar la API local se puede cambiar sin tocar código:
+///   flutter run -d chrome --dart-define=ML_API_URL=http://localhost:8000
+///   flutter run -d <emulador android> --dart-define=ML_API_URL=http://10.0.2.2:8000
+///   flutter run -d <android> --dart-define=ML_API_URL=http://192.168.1.50:8000   (celular real, misma Wi-Fi)
 class ApiConfig {
   ApiConfig._();
 
   static const _fromEnv = String.fromEnvironment('ML_API_URL');
 
+  /// API de predicción desplegada en Railway.
+  static const mlApiRailway = 'https://feisty-possibility-production.up.railway.app';
+
   static String get mlApiBaseUrl {
-    if (_fromEnv.isNotEmpty) return _fromEnv.endsWith('/') ? _fromEnv.substring(0, _fromEnv.length - 1) : _fromEnv;
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) return 'http://10.0.2.2:8000';
-    return 'http://localhost:8000';
+    final v = _fromEnv.isNotEmpty ? _fromEnv : mlApiRailway;
+    return v.endsWith('/') ? v.substring(0, v.length - 1) : v;
+  }
+
+  /// true si la API apunta a un PC (localhost, emulador o red Wi-Fi) y no a la nube.
+  static bool get mlApiEsLocal {
+    final host = Uri.tryParse(mlApiBaseUrl)?.host ?? '';
+    return host == 'localhost' || host == '127.0.0.1' || host == '10.0.2.2' || host.startsWith('192.168.');
   }
 
   static const _springFromEnv = String.fromEnvironment('SPRING_API_URL');
@@ -33,6 +38,8 @@ class ApiConfig {
   static const springTimeout = Duration(seconds: 30);
 
   /// La red LSTM + la explicación por oclusión tardan un poco con muchos clientes.
-  static const predictTimeout = Duration(seconds: 60);
-  static const healthTimeout = Duration(seconds: 5);
+  static const predictTimeout = Duration(seconds: 90);
+
+  /// Alto a propósito: si la API de Railway está dormida, la primera petición tarda en despertarla.
+  static const healthTimeout = Duration(seconds: 45);
 }
