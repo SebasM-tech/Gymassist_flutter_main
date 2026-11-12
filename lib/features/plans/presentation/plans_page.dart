@@ -64,16 +64,13 @@ class _PlansPageState extends ConsumerState<PlansPage> {
   Future<void> _edit(Plan p) async {
     final n = TextEditingController(text: p.nombre), d = TextEditingController(text: p.descripcion);
     final pr = TextEditingController(text: p.precio.toStringAsFixed(0)), du = TextEditingController(text: '${p.duracionMeses}');
-    final ok = await showFormDialog(context, title: 'Editar plan', icon: Icons.edit_outlined, fields: [
+    final ok = await showFormDialog(context, title: 'Editar plan', icon: Icons.edit_outlined, controllers: [n, d, pr, du], fields: [
       AppTextField(label: 'Nombre del plan', icon: Icons.sell_outlined, controller: n, validator: Validators.notEmpty),
       AppTextField(label: 'Descripción', icon: Icons.notes, controller: d, validator: Validators.notEmpty),
       AppTextField(label: 'Precio', icon: Icons.attach_money, controller: pr, keyboardType: TextInputType.number, validator: Validators.positive),
       AppTextField(label: 'Duración (meses)', icon: Icons.schedule, controller: du, keyboardType: TextInputType.number, validator: Validators.positive),
     ]);
     final vals = (n.text.trim(), d.text.trim(), pr.text, du.text);
-    for (final c in [n, d, pr, du]) {
-      c.dispose();
-    }
     if (!ok || !mounted) return;
     final done = await runAction(
       context,

@@ -56,6 +56,20 @@ class AppShell extends ConsumerWidget {
     if (context.mounted) context.go('/login');
   }
 
+  /// Cliente sin membresía activa: todo bloqueado salvo Membresía.
+  /// Antes de avisar se vuelve a consultar la sesión, por si el admin ya registró el pago.
+  Future<void> _goLocked(BuildContext context, WidgetRef ref, String path) async {
+    await ref.read(sessionProvider.notifier).refresh();
+    if (!context.mounted) return;
+    final activo = ref.read(sessionProvider).valueOrNull?.cliente?.activo ?? false;
+    if (activo) {
+      context.go(path);
+    } else {
+      showToast(context, 'Paga tu membresía para desbloquear esta sección.', error: true);
+      if (!location.startsWith('/cliente/pago')) context.go('/cliente/pago');
+    }
+  }
+
   void _showMore(BuildContext context) => showModalBottomSheet<void>(
         context: context,
         showDragHandle: true,
@@ -80,6 +94,9 @@ class AppShell extends ConsumerWidget {
     final isAdmin = role == Role.admin;
     final main = isAdmin ? _adminMain : _clientMain;
     final dark = context.isDark;
+    // Cliente pendiente de pago o suspendido: solo Membresía queda disponible.
+    final bloqueado = !isAdmin && !(ref.watch(sessionProvider).valueOrNull?.cliente?.activo ?? false);
+    bool locked(NavItem i) => bloqueado && i.path != '/cliente/pago';
     var selected = main.indexWhere(_active);
     if (selected < 0) selected = isAdmin ? main.length : 0;
 
@@ -100,9 +117,10 @@ class AppShell extends ConsumerWidget {
             tooltip: 'Perfil',
             icon: const Icon(Icons.account_circle_outlined, size: 28),
             onSelected: (v) => v == 'cuenta' ? context.go(isAdmin ? '/admin/cuenta' : '/cliente/cuenta') : _logout(context, ref),
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'cuenta', child: ListTile(leading: Icon(Icons.manage_accounts_outlined), title: Text('Cuenta'), contentPadding: EdgeInsets.zero)),
-              PopupMenuItem(value: 'salir', child: ListTile(leading: Icon(Icons.logout, color: AppColors.danger), title: Text('Cerrar sesión', style: TextStyle(color: AppColors.danger)), contentPadding: EdgeInsets.zero)),
+            itemBuilder: (_) => [
+              if (!bloqueado)
+                const PopupMenuItem(value: 'cuenta', child: ListTile(leading: Icon(Icons.manage_accounts_outlined), title: Text('Cuenta'), contentPadding: EdgeInsets.zero)),
+              const PopupMenuItem(value: 'salir', child: ListTile(leading: Icon(Icons.logout, color: AppColors.danger), title: Text('Cerrar sesión', style: TextStyle(color: AppColors.danger)), contentPadding: EdgeInsets.zero)),
             ],
           ),
         ],
@@ -110,13 +128,21 @@ class AppShell extends ConsumerWidget {
       body: child,
       bottomNavigationBar: NavigationBar(
         selectedIndex: selected,
-        onDestinationSelected: (i) => (isAdmin && i == main.length) ? _showMore(context) : context.go(main[i].path),
+        onDestinationSelected: (i) {
+          if (isAdmin && i == main.length) return _showMore(context);
+          if (locked(main[i])) {
+            _goLocked(context, ref, main[i].path);
+            return;
+          }
+          context.go(main[i].path);
+        },
         destinations: [
-          for (final i in main) NavigationDestination(icon: Icon(i.icon), label: i.label),
+          for (final i in main)
+            NavigationDestination(icon: Icon(locked(i) ? Icons.lock_outline : i.icon, color: locked(i) ? context.muted : null), label: i.label),
           if (isAdmin) const NavigationDestination(icon: Icon(Icons.more_horiz), label: 'Más'),
         ],
       ),
-      floatingActionButton: isAdmin ? null : const ChatbotFab(),
+      floatingActionButton: isAdmin || bloqueado ? null : const ChatbotFab(),
     );
   }
 }

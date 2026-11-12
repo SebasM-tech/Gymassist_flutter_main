@@ -38,7 +38,8 @@ String? _guard(AppSession? s, bool loading, String loc) {
   } else {
     if (loc.startsWith('/admin') || loc.startsWith('/gimnasio')) return '/acceso-denegado';
     final activo = s.cliente?.activo ?? false;
-    if (!activo && (loc.startsWith('/cliente/rutinas') || loc.startsWith('/cliente/asistencia'))) return '/cliente/pago';
+    // Sin membresía activa (pendiente de pago o suspendido) solo puede ver Membresía.
+    if (!activo && loc.startsWith('/cliente') && !loc.startsWith('/cliente/pago')) return '/cliente/pago';
   }
   return null;
 }

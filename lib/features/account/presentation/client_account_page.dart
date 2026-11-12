@@ -13,7 +13,7 @@ class ClientAccountPage extends ConsumerWidget {
   Future<void> _edit(BuildContext context, WidgetRef ref, String correo, String usuario) async {
     final mail = TextEditingController(text: correo), user = TextEditingController(text: usuario);
     final pass = TextEditingController(), confirm = TextEditingController();
-    final ok = await showFormDialog(context, title: 'Editar información', icon: Icons.edit_outlined, fields: [
+    final ok = await showFormDialog(context, title: 'Editar información', icon: Icons.edit_outlined, controllers: [mail, user, pass, confirm], fields: [
       AppTextField(label: 'Correo electrónico', icon: Icons.mail_outline, controller: mail, keyboardType: TextInputType.emailAddress, validator: Validators.email),
       AppTextField(label: 'Nombre de usuario', icon: Icons.person_outline, controller: user, validator: Validators.notEmpty),
       AppTextField(label: 'Nueva contraseña (opcional)', icon: Icons.lock_outline, controller: pass, obscure: true,
@@ -22,9 +22,6 @@ class ClientAccountPage extends ConsumerWidget {
           validator: (v) => pass.text.isEmpty ? null : Validators.matches(pass)(v)),
     ]);
     final vals = (mail.text.trim(), user.text.trim(), pass.text);
-    for (final c in [mail, user, pass, confirm]) {
-      c.dispose();
-    }
     if (!ok || !context.mounted) return;
     final done = await runAction(context, () async {
       final token = await ref.read(gymApiProvider).actualizarCuenta(correo: vals.$1, username: vals.$2, password: vals.$3);

@@ -45,6 +45,7 @@ class _ClientsPageState extends ConsumerState<ClientsPage> {
       title: 'Agregar cliente',
       icon: Icons.person_add_alt_1,
       submitLabel: 'Agregar cliente',
+      controllers: [nombre, correo, doc, tel, user, pass],
       fields: [
         AppTextField(label: 'Nombre completo', icon: Icons.person_outline, controller: nombre, validator: Validators.notEmpty),
         AppTextField(label: 'Correo electrónico', icon: Icons.mail_outline, controller: correo, keyboardType: TextInputType.emailAddress, validator: Validators.email),
@@ -65,9 +66,6 @@ class _ClientsPageState extends ConsumerState<ClientsPage> {
       ],
     );
     final v = (nombre.text.trim(), correo.text.trim(), doc.text.trim(), tel.text.trim(), user.text.trim(), pass.text);
-    for (final x in [nombre, correo, doc, tel, user, pass]) {
-      x.dispose();
-    }
     if (!ok || !mounted || planId == null) return;
     final done = await runAction(
       context,

@@ -249,16 +249,26 @@ class AppTextField extends StatelessWidget {
 }
 
 /// Formulario en hoja inferior (patrón móvil). Devuelve true si se guardó y las validaciones pasaron.
+///
+/// Pasa en [controllers] los TextEditingController de los campos: la hoja los libera sola cuando
+/// termina de cerrarse. No los liberes al volver del `await`: en ese momento la hoja sigue en
+/// pantalla (animación de cierre) y los campos aún los usan, lo que rompe el árbol de widgets
+/// ("_dependents.isEmpty is not true"). Su texto se puede leer sin problema al volver del `await`.
 Future<bool> showFormDialog(BuildContext context,
-    {required String title, required IconData icon, required List<Widget> fields, String submitLabel = 'Guardar cambios'}) async {
+    {required String title,
+    required IconData icon,
+    required List<Widget> fields,
+    List<TextEditingController> controllers = const [],
+    String submitLabel = 'Guardar cambios'}) async {
   final key = GlobalKey<FormState>();
   final r = await showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
     showDragHandle: true,
-    builder: (ctx) => Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+    builder: (ctx) => _FormSheet(
+      controllers: controllers,
+      bottomInset: MediaQuery.viewInsetsOf(ctx).bottom,
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
         child: Form(
@@ -287,6 +297,32 @@ Future<bool> showFormDialog(BuildContext context,
     ),
   );
   return r ?? false;
+}
+
+/// Contenido de [showFormDialog]. Libera los controladores cuando la hoja sale del árbol,
+/// es decir, cuando la animación de cierre ya terminó.
+class _FormSheet extends StatefulWidget {
+  const _FormSheet({required this.controllers, required this.bottomInset, required this.child});
+  final List<TextEditingController> controllers;
+  final double bottomInset;
+  final Widget child;
+  @override
+  State<_FormSheet> createState() => _FormSheetState();
+}
+
+class _FormSheetState extends State<_FormSheet> {
+  late final List<TextEditingController> _controllers = widget.controllers;
+
+  @override
+  void dispose() {
+    for (final c in _controllers) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(padding: EdgeInsets.only(bottom: widget.bottomInset), child: widget.child);
 }
 
 Future<bool> showConfirm(BuildContext context,
