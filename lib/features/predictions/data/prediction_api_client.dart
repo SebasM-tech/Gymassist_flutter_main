@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:gymassist/core/api/offline_cache.dart';
 import 'package:gymassist/core/config/api_config.dart';
 import 'package:gymassist/features/predictions/domain/prediction_domain.dart';
 import 'package:http/http.dart' as http;
@@ -10,19 +11,26 @@ import 'package:http/http.dart' as http;
 /// Endpoints que usa:
 ///   GET  /salud           -> estado y métricas del modelo
 ///   POST /predecir/lote   -> probabilidad de abandono + factores + recomendación por cliente
+///
+/// Modo sin conexión: la última respuesta de cada endpoint se guarda en [OfflineCache];
+/// sin internet se muestran las últimas predicciones calculadas.
 class PredictionApiClient {
-  PredictionApiClient({http.Client? client, String? baseUrl})
+  PredictionApiClient({http.Client? client, String? baseUrl, OfflineCache? cache, OfflineStatus? status})
       : _http = client ?? http.Client(),
-        baseUrl = baseUrl ?? ApiConfig.mlApiBaseUrl;
+        baseUrl = baseUrl ?? ApiConfig.mlApiBaseUrl,
+        _cache = cache ?? OfflineCache.instance,
+        _status = status ?? OfflineStatus.instance;
 
   final http.Client _http;
   final String baseUrl;
+  final OfflineCache _cache;
+  final OfflineStatus _status;
 
   Uri _uri(String path) => Uri.parse('$baseUrl$path');
 
   Future<ModelHealth> health() async {
-    final res = await _send(() => _http.get(_uri('/salud')).timeout(ApiConfig.healthTimeout));
-    return ModelHealth.fromJson(_decode(res));
+    final text = await _send(() => _http.get(_uri('/salud')).timeout(ApiConfig.healthTimeout), cacheKey: 'ML GET /salud');
+    return ModelHealth.fromJson(_decode(text));
   }
 
   /// `clientes` es la lista en el formato que espera FastAPI (ver `Cliente` en prediccion-ml/app/main.py).
@@ -33,17 +41,27 @@ class PredictionApiClient {
       'clientes': clientes,
       if (fechaReferencia != null) 'fechaReferencia': fechaReferencia.toIso8601String().substring(0, 10),
     });
-    final res = await _send(() => _http
-        .post(_uri('/predecir/lote'), headers: const {'Content-Type': 'application/json'}, body: body)
-        .timeout(ApiConfig.predictTimeout));
-    final json = _decode(res);
+    final text = await _send(
+        () => _http
+            .post(_uri('/predecir/lote'), headers: const {'Content-Type': 'application/json'}, body: body)
+            .timeout(ApiConfig.predictTimeout),
+        cacheKey: 'ML POST /predecir/lote');
+    final json = _decode(text);
     return [for (final r in (json['resultados'] as List? ?? const [])) (r as Map).cast<String, dynamic>()];
   }
 
   /// Intentos cuando la API de Railway está despertando (Serverless).
   static const _intentos = 5;
 
-  Future<http.Response> _send(Future<http.Response> Function() call) async {
+  /// ¿El error es por falta de internet en el teléfono (y no porque Railway esté despertando)?
+  bool _sinInternet(Object e) {
+    if (_status.cachedAt != null) return true; // el backend principal ya respondió desde la caché
+    final m = '$e';
+    return m.contains('Failed host lookup') || m.contains('Network is unreachable');
+  }
+
+  /// Devuelve el cuerpo de la respuesta como texto. Si no hay conexión, usa la última copia guardada.
+  Future<String> _send(Future<http.Response> Function() call, {required String cacheKey}) async {
     for (var intento = 1;; intento++) {
       try {
         final res = await call();
@@ -58,25 +76,40 @@ class PredictionApiClient {
         if (res.statusCode >= 400) {
           throw PredictionApiException('La API respondió ${res.statusCode}: ${_detail(res) ?? res.reasonPhrase ?? ''}');
         }
-        return res;
+        final text = utf8.decode(res.bodyBytes);
+        _status.online();
+        unawaited(_cache.write(cacheKey, text));
+        return text;
       } on PredictionApiException {
         rethrow;
       } on TimeoutException {
+        final guardado = await _guardado(cacheKey);
+        if (guardado != null) return guardado;
         throw PredictionApiException('La API de predicción no respondió a tiempo ($baseUrl).', apiOffline: true);
       } catch (e) {
         // http.ClientException, SocketException (móvil/escritorio) y errores de red del navegador.
         // En la web, un 502 de Railway sin CORS también llega aquí: se reintenta igual.
-        if (intento < _intentos) {
+        // Si el teléfono no tiene internet no vale la pena reintentar: se va directo a la copia guardada.
+        if (!_sinInternet(e) && intento < _intentos) {
           await Future<void>.delayed(Duration(seconds: 3 * intento));
           continue;
         }
+        final guardado = await _guardado(cacheKey);
+        if (guardado != null) return guardado;
         throw PredictionApiException('No se pudo conectar con la API de predicción en $baseUrl.', apiOffline: true);
       }
     }
   }
 
-  Map<String, dynamic> _decode(http.Response res) {
-    final decoded = jsonDecode(utf8.decode(res.bodyBytes));
+  Future<String?> _guardado(String cacheKey) async {
+    final c = await _cache.read(cacheKey);
+    if (c == null) return null;
+    _status.servedFromCache(c.savedAt);
+    return c.body;
+  }
+
+  Map<String, dynamic> _decode(String text) {
+    final decoded = jsonDecode(text);
     if (decoded is Map<String, dynamic>) return decoded;
     throw const PredictionApiException('Respuesta inesperada de la API.');
   }

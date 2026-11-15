@@ -5,6 +5,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gymassist/core/router/app_router.dart';
 import 'package:gymassist/core/theme/app_theme.dart';
+import 'package:gymassist/core/widgets/offline_banner.dart';
 
 class GymAssistApp extends ConsumerWidget {
   const GymAssistApp({super.key});
@@ -25,7 +26,7 @@ class GymAssistApp extends ConsumerWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      builder: (context, child) => _PhoneFrame(child: child!),
+      builder: (context, child) => _PhoneFrame(child: OfflineBanner(child: child!)),
     );
   }
 }

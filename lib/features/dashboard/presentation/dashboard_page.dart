@@ -63,16 +63,37 @@ class DashboardPage extends ConsumerWidget {
           StatCard(icon: Icons.date_range_outlined, label: 'Ingresos de la semana', value: formatCop(_n(d['ingresosSemanales'])), color: AppColors.info),
           StatCard(icon: Icons.account_balance_wallet_outlined, label: 'Ingresos totales', value: formatCop(_n(d['ingresosTotales']))),
         ]),
-        const SizedBox(height: 24),
+        const _SectionHeader('Ingresos', 'Cómo viene el dinero del gimnasio mes a mes.'),
         IncomeTrendChart(points: ingresos),
-        const SizedBox(height: 20),
+        const _SectionHeader('Clientes', 'Estado de las membresías y movimiento del mes.'),
         AdaptiveGrid(minItemWidth: 300, spacing: 20, children: [
           ClientsStatusDonut(slices: estados),
           ClientsActivityBars(items: actividad),
         ]),
-        const SizedBox(height: 20),
+        const _SectionHeader('Asistencia y entrenamiento', 'Cuándo viene la gente y qué músculos trabaja.'),
         const AttendanceInsights(),
       ];
     }));
   }
+}
+
+/// Título de cada bloque del dashboard, para que las gráficas queden agrupadas por tema.
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader(this.title, this.subtitle);
+  final String title, subtitle;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(top: 32, bottom: 14),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+          Container(width: 4, height: 34, decoration: BoxDecoration(color: AppColors.accent, borderRadius: BorderRadius.circular(2))),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: context.tt.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+              Text(subtitle, style: context.tt.bodySmall?.copyWith(color: context.muted)),
+            ]),
+          ),
+        ]),
+      );
 }

@@ -39,4 +39,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  # TODO(offline): empaquetar la tipografía Inter en assets/fonts (no usar google_fonts: requiere red).
+  assets:
+    - assets/images/logo.png

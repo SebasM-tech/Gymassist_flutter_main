@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:gymassist/core/api/offline_cache.dart';
 import 'package:gymassist/core/config/api_config.dart';
 import 'package:http/http.dart' as http;
 
@@ -28,12 +29,19 @@ class UploadFile {
 }
 
 /// Cliente HTTP del backend Spring Boot (rutas /api/m/**). Agrega el token JWT en cada petición.
+///
+/// Modo sin conexión: cada lectura (GET) que sale bien se guarda en [OfflineCache]; si luego
+/// no hay internet, se responde con esa copia. Las escrituras siempre necesitan conexión.
 class ApiClient {
-  ApiClient({http.Client? client, String? baseUrl})
+  ApiClient({http.Client? client, String? baseUrl, OfflineCache? cache, OfflineStatus? status})
       : _http = client ?? http.Client(),
-        baseUrl = baseUrl ?? ApiConfig.springApiBaseUrl;
+        baseUrl = baseUrl ?? ApiConfig.springApiBaseUrl,
+        _cache = cache ?? OfflineCache.instance,
+        _status = status ?? OfflineStatus.instance;
 
   final http.Client _http;
+  final OfflineCache _cache;
+  final OfflineStatus _status;
   final String baseUrl;
   String? token;
 
@@ -48,8 +56,10 @@ class ApiClient {
         if (token != null) 'Authorization': 'Bearer $token',
       };
 
-  Future<dynamic> get(String path, {Map<String, String>? query}) =>
-      _send(() => _http.get(_uri(path, query), headers: _headers));
+  Future<dynamic> get(String path, {Map<String, String>? query}) {
+    final uri = _uri(path, query);
+    return _send(() => _http.get(uri, headers: _headers), cacheKey: 'GET ${uri.path}?${uri.query}');
+  }
 
   Future<dynamic> post(String path, [Object? body]) => _send(() => _http.post(_uri(path),
       headers: {..._headers, 'Content-Type': 'application/json'}, body: jsonEncode(body ?? const {})));
@@ -76,23 +86,30 @@ class ApiClient {
     });
   }
 
-  Future<dynamic> _send(Future<http.Response> Function() call) async {
+  /// [cacheKey] solo se pasa en las lecturas (GET): es el nombre con que se guarda la respuesta.
+  Future<dynamic> _send(Future<http.Response> Function() call, {String? cacheKey}) async {
     http.Response res;
     try {
       res = await call().timeout(ApiConfig.springTimeout);
-    } on TimeoutException {
-      throw const ApiException('El servidor no respondió a tiempo. Revisa tu conexión.');
-    } catch (_) {
-      throw ApiException('No se pudo conectar con el servidor ($baseUrl).');
-    }
-    final text = utf8.decode(res.bodyBytes);
-    dynamic json;
-    if (text.isNotEmpty) {
-      try {
-        json = jsonDecode(text);
-      } catch (_) {
-        json = null;
+    } catch (e) {
+      // No hubo respuesta (sin internet o servidor inalcanzable): se usa la copia guardada, si existe.
+      if (cacheKey != null) {
+        final guardado = await _cache.read(cacheKey);
+        if (guardado != null) {
+          _status.servedFromCache(guardado.savedAt);
+          return _decode(guardado.body);
+        }
       }
+      if (e is TimeoutException) throw const ApiException('El servidor no respondió a tiempo. Revisa tu conexión.');
+      throw ApiException(cacheKey == null
+          ? 'Sin conexión con el servidor. Esta acción necesita internet.'
+          : 'Sin conexión con el servidor y aún no hay datos guardados de esta pantalla.');
+    }
+    _status.online();
+    final text = utf8.decode(res.bodyBytes);
+    final json = _decode(text);
+    if (cacheKey != null && res.statusCode >= 200 && res.statusCode < 300) {
+      unawaited(_cache.write(cacheKey, text));
     }
     if (res.statusCode >= 200 && res.statusCode < 300) return json;
     if (res.statusCode == 401) onUnauthorized?.call();
@@ -105,5 +122,14 @@ class ApiClient {
             _ => 'Error del servidor (${res.statusCode}).',
           };
     throw ApiException(msg, status: res.statusCode);
+  }
+
+  static dynamic _decode(String text) {
+    if (text.isEmpty) return null;
+    try {
+      return jsonDecode(text);
+    } catch (_) {
+      return null;
+    }
   }
 }

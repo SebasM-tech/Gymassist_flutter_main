@@ -17,11 +17,19 @@ class AttendanceInsights extends ConsumerWidget {
       skipLoadingOnRefresh: true,
       loading: () => const LoadingCard(message: 'Cargando asistencias…'),
       error: (e, _) => ErrorCard(message: '$e', onRetry: () => ref.invalidate(adminVisitsProvider)),
-      data: (v) => Column(children: [
-        AttendanceHeatmap(visits: v),
-        const SizedBox(height: 20),
-        MuscleRadarChart(visits: v),
-      ]),
+      // En pantallas anchas las dos gráficas van lado a lado; en celular, una debajo de la otra.
+      data: (v) => LayoutBuilder(builder: (context, cons) {
+        final heatmap = AttendanceHeatmap(visits: v);
+        final radar = MuscleRadarChart(visits: v);
+        if (cons.maxWidth >= 1000) {
+          return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(child: heatmap),
+            const SizedBox(width: 20),
+            Expanded(child: radar),
+          ]);
+        }
+        return Column(children: [heatmap, const SizedBox(height: 20), radar]);
+      }),
     );
   }
 }

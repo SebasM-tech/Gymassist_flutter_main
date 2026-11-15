@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:gymassist/core/api/api_client.dart';
 import 'package:gymassist/core/api/gym_api.dart';
 import 'package:gymassist/core/api/models.dart';
+import 'package:gymassist/core/api/offline_cache.dart';
 
 /// Sesión con el backend Spring Boot (token JWT + datos del usuario).
 class AppSession {
@@ -60,6 +63,7 @@ class SessionController extends AsyncNotifier<AppSession?> {
     if (token == null || token.isEmpty) return null;
     _client.token = token;
     try {
+      // Sin internet, /me responde con la copia guardada: la app abre con la última sesión.
       return AppSession.fromJson(await _api.me(), token);
     } on ApiException catch (e) {
       if (e.unauthorized) await _clearToken();
@@ -97,6 +101,9 @@ class SessionController extends AsyncNotifier<AppSession?> {
   Future<void> logout() async {
     _client.token = null;
     await _clearToken();
+    // Los datos guardados para el modo sin conexión son de esta cuenta: se borran con la sesión.
+    await OfflineCache.instance.clear();
+    OfflineStatus.instance.online();
     state = const AsyncData(null);
   }
 
@@ -104,6 +111,9 @@ class SessionController extends AsyncNotifier<AppSession?> {
     final token = '${j['token']}';
     _client.token = token;
     await _saveToken(token);
+    await OfflineCache.instance.clear(); // por si quedaban datos de otra cuenta
+    // Guarda /me para poder abrir la app sin internet la próxima vez.
+    unawaited(_api.me().then<void>((_) {}, onError: (_) {}));
     final s = AppSession.fromJson(j, token);
     state = AsyncData(s);
     return s;
