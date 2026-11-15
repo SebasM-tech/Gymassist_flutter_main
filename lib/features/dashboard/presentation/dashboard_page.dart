@@ -5,6 +5,7 @@ import 'package:gymassist/core/api/session.dart';
 import 'package:gymassist/core/theme/app_theme.dart';
 import 'package:gymassist/core/widgets/async_view.dart';
 import 'package:gymassist/core/widgets/common.dart';
+import 'package:gymassist/features/dashboard/presentation/widgets/attendance_insights.dart';
 import 'package:gymassist/features/dashboard/presentation/widgets/clients_activity_bars.dart';
 import 'package:gymassist/features/dashboard/presentation/widgets/clients_status_donut.dart';
 import 'package:gymassist/features/dashboard/presentation/widgets/income_trend_chart.dart';
@@ -12,7 +13,10 @@ import 'package:gymassist/features/dashboard/presentation/widgets/income_trend_c
 /// Dashboard con los datos reales del gimnasio (GET /api/m/admin/dashboard).
 ///
 /// Gráficas:
-///  - AVANZADA: [IncomeTrendChart]  -> ingresos (curva con degradado, Mensual/Acumulado, promedio, tooltip).
+///  - AVANZADA 1: [IncomeTrendChart]  -> ingresos (curva con degradado, Mensual/Acumulado, promedio, tooltip).
+///  - AVANZADA 2: [AttendanceHeatmap] -> mapa de calor de asistencia por día (8/12/16 semanas, detalle al tocar).
+///  - AVANZADA 3: [MuscleRadarChart]  -> radar de grupos musculares, últimas 4 semanas frente a las 4 anteriores.
+///    (las dos últimas van dentro de [AttendanceInsights], con datos de GET /api/m/admin/ml/clientes)
 ///  - BÁSICA 1: [ClientsStatusDonut] -> clientes por estado.
 ///  - BÁSICA 2: [ClientsActivityBars] -> activos / nuevos del mes / por vencer.
 class DashboardPage extends ConsumerWidget {
@@ -66,6 +70,8 @@ class DashboardPage extends ConsumerWidget {
           ClientsStatusDonut(slices: estados),
           ClientsActivityBars(items: actividad),
         ]),
+        const SizedBox(height: 20),
+        const AttendanceInsights(),
       ];
     }));
   }
